@@ -1,0 +1,10 @@
+requests
+nbformat
+nbdime
+nbconvert
+pandas
+matplotlib
+seaborn
+scipy
+pyyaml
+gradio>=4.0.0

@@ -1,0 +1,10 @@
+output/
+__pycache__/
+*.pyc
+.env
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.repo_venvs/
+analysis/figures/
+analysis/astro_reproducibility_analysis.ipynb

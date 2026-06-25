@@ -1,0 +1,53 @@
+# ReproScore Default Rubric
+# Community-configurable weights and gate parameters.
+# All category weights must sum to 1.0 (+/- 0.01).
+
+name: default
+version: "1.0"
+
+categories:
+  E:
+    name: Environment Specification
+    weight: 0.30
+    tau: 40
+    k: 1.5
+  A:
+    name: Data Accessibility
+    weight: 0.25
+    tau: 30
+    k: 1.5
+  D:
+    name: Documentation
+    weight: 0.20
+    tau: 20
+    k: 1.2
+  C:
+    name: Code Portability
+    weight: 0.15
+    tau: 25
+    k: 1.2
+  S:
+    name: Reproducibility Signals
+    weight: 0.10
+    tau: 30
+    k: 1.2
+
+penalties:
+  environment_hard_threshold: 10
+  data_hard_threshold: 10
+  environment_hard_penalty: 20
+  data_hard_penalty: 15
+  seed_threshold: 50
+  seed_penalty: 10
+
+ros_components:
+  I:     {weight: 0.30}
+  X:     {weight: 0.25}
+  delta: {weight: 0.20}
+  N:     {weight: 0.10}
+  E:     {weight: 0.10}
+  T:     {weight: 0.05}
+
+rcs:
+  alpha_max: 0.70
+  alpha_min: 0.10
