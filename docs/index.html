@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ReproScore</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--green:#3fb950;--orange:#d29922;--red:#f85149;--purple:#bc8cff; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;}
+  nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 2rem;display:flex;align-items:center;gap:2rem;position:sticky;top:0;z-index:100;height:56px;}
+  nav .logo{font-weight:700;font-size:1.1rem;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:0.5rem;}
+  nav .logo span{color:var(--accent);}
+  nav a{color:var(--muted);text-decoration:none;font-size:0.9rem;padding:0.25rem 0;border-bottom:2px solid transparent;transition:color 0.2s,border-color 0.2s;}
+  nav a:hover,nav a.active{color:var(--text);border-bottom-color:var(--accent);}
+  nav .spacer{flex:1;}
+  nav .gh-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.35rem 0.9rem;border-radius:6px;font-size:0.85rem;text-decoration:none;display:flex;align-items:center;gap:0.4rem;}
+  nav .gh-btn:hover{background:var(--border);border-color:var(--muted);}
+  .hero{padding:5rem 2rem 4rem;max-width:900px;margin:0 auto;text-align:center;}
+  .hero h1{font-size:2.6rem;font-weight:800;line-height:1.2;margin-bottom:1.2rem;}
+  .hero h1 em{color:var(--accent);font-style:normal;}
+  .hero p{color:var(--muted);font-size:1.1rem;max-width:680px;margin:0 auto 2rem;}
+  .badges{display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem;}
+  .badge{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:0.25rem 0.8rem;font-size:0.8rem;color:var(--muted);}
+  .badge.blue{border-color:var(--accent);color:var(--accent);}
+  .badge.green{border-color:var(--green);color:var(--green);}
+  .hero-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
+  .btn{padding:0.65rem 1.5rem;border-radius:8px;font-size:0.95rem;font-weight:600;text-decoration:none;transition:opacity 0.2s;}
+  .btn-primary{background:var(--accent);color:#0d1117;}
+  .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text);}
+  .btn:hover{opacity:0.85;}
+  .stats-bar{display:flex;gap:1px;background:var(--border);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+  .stat{flex:1;background:var(--surface);padding:1.5rem;text-align:center;}
+  .stat .val{font-size:2rem;font-weight:800;color:var(--accent);}
+  .stat .lbl{font-size:0.8rem;color:var(--muted);margin-top:0.2rem;}
+  section{padding:4rem 2rem;max-width:1100px;margin:0 auto;}
+  section h2{font-size:1.6rem;font-weight:700;margin-bottom:0.5rem;}
+  section .sub{color:var(--muted);margin-bottom:2rem;font-size:0.95rem;}
+  .divider{border:none;border-top:1px solid var(--border);margin:0;}
+  .steps{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;}
+  .step{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem;}
+  .step .num{font-size:0.75rem;font-weight:700;color:var(--accent);letter-spacing:1px;margin-bottom:0.4rem;}
+  .step h3{font-size:0.95rem;font-weight:600;margin-bottom:0.4rem;}
+  .step p{font-size:0.83rem;color:var(--muted);}
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:2rem;}
+  .tab{padding:0.65rem 1.2rem;cursor:pointer;font-size:0.9rem;color:var(--muted);border-bottom:2px solid transparent;transition:all 0.2s;background:none;border-top:none;border-left:none;border-right:none;}
+  .tab:hover{color:var(--text);}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;}
+  @media(max-width:700px){.charts-grid{grid-template-columns:1fr;}}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.5rem;}
+  .chart-card h3{font-size:0.9rem;font-weight:600;margin-bottom:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
+  .chart-wrap{position:relative;height:260px;}
+  .table-wrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:0.88rem;}
+  th{background:var(--surface2);color:var(--muted);font-weight:600;text-align:left;padding:0.7rem 1rem;border-bottom:1px solid var(--border);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.5px;}
+  td{padding:0.7rem 1rem;border-bottom:1px solid var(--border);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:var(--surface2);}
+  .score-pill{display:inline-block;padding:0.15rem 0.6rem;border-radius:20px;font-size:0.8rem;font-weight:600;}
+  .score-high{background:rgba(63,185,80,0.15);color:var(--green);}
+  .score-mid{background:rgba(210,153,34,0.15);color:var(--orange);}
+  .score-low{background:rgba(248,81,73,0.15);color:var(--red);}
+  .status-ok{color:var(--green);font-weight:600;}
+  .status-err{color:var(--orange);font-weight:600;}
+  .repo-link{color:var(--accent);text-decoration:none;}
+  .repo-link:hover{text-decoration:underline;}
+  pre{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:1.2rem 1.4rem;font-size:0.85rem;overflow-x:auto;line-height:1.7;}
+  code{font-family:'SF Mono','Fira Code',monospace;}
+  .cmd-comment{color:var(--muted);}
+  .cmd-key{color:var(--accent);}
+  footer{background:var(--surface);border-top:1px solid var(--border);padding:2.5rem 2rem;text-align:center;color:var(--muted);font-size:0.85rem;}
+  footer a{color:var(--accent);text-decoration:none;}
+  footer a:hover{text-decoration:underline;}
+  .loading{color:var(--muted);font-size:0.9rem;padding:2rem;text-align:center;}
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="#"><span>🔬</span> ReproScore</a>
+  <a href="#pipeline" class="active">Pipeline</a>
+  <a href="#dashboard">Dashboard</a>
+  <a href="#scorer">Live Scorer</a>
+  <a href="#usage">Usage</a>
+  <a href="#analysis">Analysis</a>
+  <div class="spacer"></div>
+  <a class="gh-btn" href="https://github.com/VasundharaShaw/ReproScore-Any" target="_blank">
+    <svg height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    GitHub
+  </a>
+</nav>
+
+<div class="hero">
+  <div class="badges">
+    <span class="badge blue">Python 3.10+</span>
+    <span class="badge green">GPL-3.0</span>
+    <span class="badge">NFDI JupyterHub</span>
+    <span class="badge">Field-Agnostic</span>
+  </div>
+  <h1>Score Any GitHub Repository for<br><em>Notebook Reproducibility</em></h1>
+  <p>An automated pipeline that clones any GitHub repository, executes its Jupyter notebooks in isolated environments, and scores reproducibility using the ReproScore framework (RRS, ROS, RCS).</p>
+  <div class="hero-btns">
+    <a href="#dashboard" class="btn btn-primary">View Dashboard</a>
+    <a href="https://github.com/VasundharaShaw/ReproScore-Any" class="btn btn-outline" target="_blank">View on GitHub</a>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat"><div class="val" id="stat-repos">—</div><div class="lbl">Repositories Processed</div></div>
+  <div class="stat"><div class="val" id="stat-notebooks">—</div><div class="lbl">Notebooks Executed</div></div>
+  <div class="stat"><div class="val" id="stat-success">—</div><div class="lbl">Successful Runs</div></div>
+  <div class="stat"><div class="val" id="stat-avg-rrs">—</div><div class="lbl">Avg RRS Score</div></div>
+</div>
+
+<hr class="divider"/>
+
+<section id="pipeline">
+  <h2>How the Pipeline Works</h2>
+  <p class="sub">Automated workflow from repository input to reproducibility scoring</p>
+  <div class="steps">
+    <div class="step"><div class="num">STEP 01</div><h3>Input Repository</h3><p>Provide any public GitHub repository URL — from any research field.</p></div>
+    <div class="step"><div class="num">STEP 02</div><h3>Clone Repo</h3><p>Clone the repository with shallow depth for efficiency.</p></div>
+    <div class="step"><div class="num">STEP 03</div><h3>Score (RRS)</h3><p>Static analysis across 5 categories: Environment, Data, Documentation, Portability, Signals.</p></div>
+    <div class="step"><div class="num">STEP 04</div><h3>Detect Python</h3><p>Detect required Python version from runtime.txt, .python-version, or setup files.</p></div>
+    <div class="step"><div class="num">STEP 05</div><h3>Isolate Environment</h3><p>Create a per-repo pyenv + venv with all declared dependencies installed.</p></div>
+    <div class="step"><div class="num">STEP 06</div><h3>Execute Notebooks</h3><p>Run all notebooks via nbconvert, capturing outputs and errors per cell.</p></div>
+    <div class="step"><div class="num">STEP 07</div><h3>Compare Outputs</h3><p>Diff original vs re-executed notebook outputs at the cell level.</p></div>
+    <div class="step"><div class="num">STEP 08</div><h3>Score (ROS/RCS)</h3><p>Compute Reproducibility Outcome Score and Composite Score from execution evidence.</p></div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<section id="dashboard">
+  <h2>Results Dashboard</h2>
+  <p class="sub">Live data from the latest pipeline runs — updated on each push</p>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('scores')">Scores</button>
+    <button class="tab" onclick="switchTab('executions')">Notebook Executions</button>
+    <button class="tab" onclick="switchTab('metrics')">Reproducibility Metrics</button>
+    <button class="tab" onclick="switchTab('charts')">Charts</button>
+  </div>
+  <div class="tab-panel active" id="tab-scores"><div class="table-wrap" id="scores-table"><div class="loading">Loading scores...</div></div></div>
+  <div class="tab-panel" id="tab-executions"><div class="table-wrap" id="executions-table"><div class="loading">Loading executions...</div></div></div>
+  <div class="tab-panel" id="tab-metrics"><div class="table-wrap" id="metrics-table"><div class="loading">Loading metrics...</div></div></div>
+  <div class="tab-panel" id="tab-charts">
+    <div class="charts-grid">
+      <div class="chart-card"><h3>RRS / ROS / RCS by Repository</h3><div class="chart-wrap"><canvas id="chart-rrs-ros"></canvas></div></div>
+      <div class="chart-card"><h3>RRS Category Breakdown</h3><div class="chart-wrap"><canvas id="chart-categories"></canvas></div></div>
+      <div class="chart-card"><h3>Reproducibility Score per Notebook</h3><div class="chart-wrap"><canvas id="chart-repro"></canvas></div></div>
+      <div class="chart-card"><h3>Execution Status Distribution</h3><div class="chart-wrap"><canvas id="chart-status"></canvas></div></div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<section id="usage">
+  <h2>Running the Pipeline</h2>
+  <p class="sub">Works on any machine with Python 3.10+ and pyenv</p>
+  <pre><code><span class="cmd-comment"># 1. Clone the repo</span>
+git clone https://github.com/VasundharaShaw/ReproScore-Any
+cd ReproScore-Any
+
+<span class="cmd-comment"># 2. (Optional) Set GitHub token for higher API rate limits</span>
+<span class="cmd-key">export</span> GITHUB_API_TOKEN=your_token_here
+
+<span class="cmd-comment"># 3. Check environment</span>
+python3 -m pipeline setup
+
+<span class="cmd-comment"># 4. Score a repository interactively</span>
+python3 -m pipeline run --interactive
+
+<span class="cmd-comment"># 5. Or score multiple repos from the DB</span>
+python3 -m pipeline run --count 5</code></pre>
+</section>
+
+<hr class="divider"/>
+
+<section id="scorer">
+  <h2>Try It Live</h2>
+  <p class="sub">Score any GitHub repository directly in your browser</p>
+  <iframe src="https://vasundharashaw-reproscore-any.hf.space" width="100%" height="800" style="border:1px solid #30363d;border-radius:10px;" frameborder="0"></iframe>
+</section>
+
+<hr class="divider"/>
+
+<section id="analysis">
+  <h2>Analysis Notebook</h2>
+  <p class="sub">Explore reproducibility results across all scored repositories</p>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:2rem">
+    <a href="https://colab.research.google.com/github/VasundharaShaw/ReproScore-Any/blob/main/analysis/reproscore_analysis.ipynb" target="_blank" style="display:flex;align-items:center;gap:0.5rem;background:#F9AB00;color:#000;padding:0.65rem 1.4rem;border-radius:8px;font-weight:700;text-decoration:none">&#9654; Open in Google Colab</a>
+    <a href="https://github.com/VasundharaShaw/ReproScore-Any/blob/main/analysis/reproscore_analysis.ipynb" target="_blank" style="display:flex;align-items:center;gap:0.5rem;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:0.65rem 1.4rem;border-radius:8px;font-weight:700;text-decoration:none">&#128211; View on GitHub</a>
+  </div>
+  <p style="color:var(--muted);font-size:0.9rem">The notebook covers score distributions, execution results, reproducibility metrics, and error analysis. To run with your own data, point it at your local <code>output/db/db.sqlite</code>.</p>
+</section>
+
+<footer>
+  <p>
+    Built by <a href="mailto:vasundhara.shaw@fiz-karlsruhe.de">Vasundhara Shaw</a> (FIZ-Karlsruhe) &amp;
+    <a href="mailto:sheeba.samuel@informatik.tu-chemnitz.de">Sheeba Samuel</a> (TU Chemnitz) ·
+    Supported by <strong>Jupyter4NFDI</strong> (DFG 567156310) ·
+    <a href="https://github.com/VasundharaShaw/ReproScore-Any" target="_blank">GitHub</a>
+  </p>
+</footer>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const names=['scores','executions','metrics','charts'];
+    t.classList.toggle('active', names[i]===name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='charts' && !window._chartsBuilt) buildCharts();
+}
+function scorePill(val) {
+  const v=parseFloat(val);
+  if(isNaN(v)) return '<span style="color:var(--muted)">—</span>';
+  const cls=v>=60?'score-high':v>=30?'score-mid':'score-low';
+  return `<span class="score-pill ${cls}">${v.toFixed(1)}</span>`;
+}
+function loadCSV(path) {
+  return new Promise((resolve,reject) => {
+    Papa.parse(path,{download:true,header:true,skipEmptyLines:true,complete:r=>resolve(r.data),error:reject});
+  });
+}
+async function buildScoresTable() {
+  const rows=await loadCSV('data/repo_targets.csv');
+  let html=`<table><thead><tr><th>Repository</th><th>Notebooks</th><th>RRS</th><th>Env (E)</th><th>Data (A)</th><th>Docs (D)</th><th>Code (C)</th><th>Signals (S)</th><th>ROS</th><th>RCS</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const repo=r.repository||'';
+    html+=`<tr><td><a class="repo-link" href="https://github.com/${repo}" target="_blank">${repo}</a></td><td>${r.notebooks_count||'—'}</td><td>${scorePill(r.rrs)}</td><td>${scorePill(r.score_E)}</td><td>${scorePill(r.score_A)}</td><td>${scorePill(r.score_D)}</td><td>${scorePill(r.score_C)}</td><td>${scorePill(r.score_S)}</td><td>${scorePill(r.ros)}</td><td>${scorePill(r.rcs)}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  document.getElementById('scores-table').innerHTML=html;
+  const avgRRS=rows.reduce((s,r)=>s+(parseFloat(r.rrs)||0),0)/(rows.length||1);
+  document.getElementById('stat-repos').textContent=rows.length;
+  document.getElementById('stat-avg-rrs').textContent=avgRRS.toFixed(1);
+  window._repoData=rows;
+}
+async function buildExecutionsTable() {
+  const rows=await loadCSV('data/notebook_executions.csv');
+  let html=`<table><thead><tr><th>Notebook</th><th>Status</th><th>Duration (s)</th><th>Total Cells</th><th>Executed</th><th>Error Type</th><th>Error Count</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const ok=r.execution_status==='SUCCESS';
+    html+=`<tr><td><code>${r.notebook_name||'—'}</code></td><td class="${ok?'status-ok':'status-err'}">${r.execution_status||'—'}</td><td>${parseFloat(r.execution_duration||0).toFixed(2)}</td><td>${r.total_code_cells||'—'}</td><td>${r.executed_cells||'—'}</td><td>${r.error_type||'—'}</td><td>${r.error_count||'0'}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  document.getElementById('executions-table').innerHTML=html;
+  document.getElementById('stat-notebooks').textContent=rows.length;
+  window._execData=rows;
+}
+async function buildMetricsTable() {
+  const rows=await loadCSV('data/notebook_reproducibility_metrics.csv');
+  let html=`<table><thead><tr><th>Notebook ID</th><th>Total Cells</th><th>Identical</th><th>Different</th><th>Nondeterministic</th><th>Reproducibility Score</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    html+=`<tr><td>${r.notebook_id||'—'}</td><td>${r.total_code_cells||'—'}</td><td style="color:var(--green)">${r.identical_cells_count||'—'}</td><td style="color:var(--red)">${r.different_cells_count||'—'}</td><td style="color:var(--orange)">${r.nondeterministic_cells_count||'—'}</td><td>${scorePill(parseFloat(r.reproducibility_score||0)*100)}</td></tr>`;
+  });
+  html+='</tbody></table>';
+  document.getElementById('metrics-table').innerHTML=html;
+  window._metricsData=rows;
+}
+async function buildRunStats() {
+  const rows=await loadCSV('data/repository_runs.csv');
+  const success=rows.filter(r=>r.run_status==='SUCCESS').length;
+  document.getElementById('stat-success').textContent=success+'/'+rows.length;
+  window._runData=rows;
+}
+function buildCharts() {
+  window._chartsBuilt=true;
+  const repos=window._repoData||[];
+  const execs=window._execData||[];
+  const metrics=window._metricsData||[];
+  const labels=repos.map(r=>(r.repository||'').split('/').pop());
+  const COLORS=['#58a6ff','#3fb950','#bc8cff','#d29922','#f85149'];
+  new Chart(document.getElementById('chart-rrs-ros'),{type:'bar',data:{labels,datasets:[
+    {label:'RRS',data:repos.map(r=>parseFloat(r.rrs)||0),backgroundColor:'#58a6ff88',borderColor:'#58a6ff',borderWidth:1},
+    {label:'ROS',data:repos.map(r=>parseFloat(r.ros)||0),backgroundColor:'#3fb95088',borderColor:'#3fb950',borderWidth:1},
+    {label:'RCS',data:repos.map(r=>parseFloat(r.rcs)||0),backgroundColor:'#bc8cff88',borderColor:'#bc8cff',borderWidth:1},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b949e'}}},scales:{x:{ticks:{color:'#8b949e'},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e'},grid:{color:'#21262d'},max:100}}}});
+  const cats=['score_E','score_A','score_D','score_C','score_S'];
+  const catLabels=['Environment','Data','Docs','Portability','Signals'];
+  new Chart(document.getElementById('chart-categories'),{type:'bar',data:{labels:catLabels,datasets:repos.map((r,i)=>({label:(r.repository||'').split('/').pop(),data:cats.map(c=>parseFloat(r[c])||0),backgroundColor:COLORS[i%COLORS.length]+'88',borderColor:COLORS[i%COLORS.length],borderWidth:1}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b949e'}}},scales:{x:{ticks:{color:'#8b949e'},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e'},grid:{color:'#21262d'},max:100}}}});
+  new Chart(document.getElementById('chart-repro'),{type:'bar',data:{labels:metrics.map((_,i)=>'NB '+(i+1)),datasets:[{label:'Reproducibility Score (%)',data:metrics.map(r=>(parseFloat(r.reproducibility_score)||0)*100),backgroundColor:metrics.map(r=>{const v=(parseFloat(r.reproducibility_score)||0)*100;return v>=60?'#3fb95088':v>=30?'#d2992288':'#f8514988';}),borderColor:metrics.map(r=>{const v=(parseFloat(r.reproducibility_score)||0)*100;return v>=60?'#3fb950':v>=30?'#d29922':'#f85149';}),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b949e'}}},scales:{x:{ticks:{color:'#8b949e'},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e'},grid:{color:'#21262d'},max:100}}}});
+  const statuses={};
+  execs.forEach(r=>{statuses[r.execution_status]=(statuses[r.execution_status]||0)+1;});
+  new Chart(document.getElementById('chart-status'),{type:'doughnut',data:{labels:Object.keys(statuses),datasets:[{data:Object.values(statuses),backgroundColor:['#3fb950','#d29922','#f85149','#58a6ff'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8b949e'}}}}});
+}
+Promise.all([buildScoresTable(),buildExecutionsTable(),buildMetricsTable(),buildRunStats()])
+  .catch(e=>console.warn('Data load error:',e));
+</script>
+</body>
+</html>
