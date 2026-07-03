@@ -146,4 +146,6 @@ with gr.Blocks(title="ReproScore", ) as demo:
     run_btn.click(fn=run_pipeline, inputs=[url_input], outputs=[results_md, logs_box, nb_table, repo_state])
 
 if __name__ == "__main__":
-    demo.launch()
+    import os
+root_path = os.environ.get('GRADIO_ROOT_PATH', '')
+demo.launch(server_name='0.0.0.0', server_port=7860, root_path=root_path)
