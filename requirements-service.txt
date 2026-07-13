@@ -1,0 +1,15 @@
+# Dependencies for the JupyterHub Service deployment (service.py).
+# Used by the Dockerfile; NOT used by the Hugging Face Space, which
+# builds from requirements.txt and needs no authentication.
+#
+# Install on top of requirements.txt:
+#     pip install -r requirements.txt -r requirements-service.txt
+
+# Pinned: service.py calls mount_gradio_app(auth_dependency=...), which is
+# not present across all Gradio majors. requirements.txt leaves gradio
+# unpinned for the Space; here it must be exact.
+gradio==6.20.0
+
+jupyterhub==5.5.0
+fastapi==0.139.0
+uvicorn==0.51.0
