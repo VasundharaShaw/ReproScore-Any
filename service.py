@@ -57,10 +57,29 @@ CALLBACK_PATH = PREFIX + "oauth_callback"
 HEALTH_PATH = PREFIX + "health"
 TOKEN_COOKIE = "reproscore-token"
 
+# OAuth client identity. Managed services get these injected by the Hub;
+# external services do not, so derive them from the service name.
+SERVICE_NAME = os.environ.get("JUPYTERHUB_SERVICE_NAME", "")
+
+CLIENT_ID = os.environ.get("JUPYTERHUB_CLIENT_ID") or (
+    f"service-{SERVICE_NAME}" if SERVICE_NAME else ""
+)
+
+REDIRECT_URI = os.environ.get("JUPYTERHUB_OAUTH_CALLBACK_URL") or CALLBACK_PATH
+
 auth = HubOAuth(
     api_token=os.environ.get("JUPYTERHUB_API_TOKEN", ""),
+    api_url=os.environ.get("JUPYTERHUB_API_URL", "http://127.0.0.1:8081/hub/api"),
+    oauth_client_id=CLIENT_ID,
+    oauth_redirect_uri=REDIRECT_URI,
     cache_max_age=60,
 )
+
+if not CLIENT_ID:
+    raise RuntimeError(
+        "No OAuth client id. Set JUPYTERHUB_CLIENT_ID, or JUPYTERHUB_SERVICE_NAME "
+        "so it can be derived as service-<name>."
+    )
 
 
 def _user_for_request(request: Request):
