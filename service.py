@@ -4,6 +4,11 @@ service.py — JupyterHub Service entry point for ReproScore-Any.
 Serves the same Gradio app as app.py, but behind JupyterHub's OAuth.
 JupyterHub is the OAuth provider; this service is the OAuth client.
 
+    python service.py
+
+binds to JUPYTERHUB_SERVICE_URL if set, else 0.0.0.0:7860.
+To bind explicitly instead:
+
     uvicorn service:app --host 0.0.0.0 --port 7860
 
 Two layers of protection, deliberately:
