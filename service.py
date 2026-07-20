@@ -147,3 +147,12 @@ app = gr.mount_gradio_app(
     root_path=MOUNT_PATH,
     auth_dependency=get_hub_user,
 )
+
+
+if __name__ == "__main__":
+    from urllib.parse import urlparse
+
+    import uvicorn
+
+    url = urlparse(os.environ.get("JUPYTERHUB_SERVICE_URL", "http://0.0.0.0:7860"))
+    uvicorn.run(app, host=url.hostname or "0.0.0.0", port=url.port or 7860)
