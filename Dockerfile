@@ -26,24 +26,29 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy pipeline code
+# Copy dependency manifests
 COPY requirements.txt .
+COPY requirements-service.txt .
+
+# Copy application entrypoints
 COPY app.py .
+COPY service.py .
+
+# Copy pipeline code
 COPY pipeline/ ./pipeline/
 COPY config/ ./config/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (service pins on top of base requirements)
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-service.txt
 
 # Install pyenv for per-repo Python version management
 RUN curl https://pyenv.run | bash
 ENV PYENV_ROOT="/root/.pyenv"
 ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
-RUN eval "$(pyenv init -)"
 
 # Create output directories
 RUN mkdir -p /app/output/db /app/output/logs /app/output/csv /app/output/cloned_repos
 
 EXPOSE 7860
 
-CMD ["python", "app.py"]
+CMD ["python", "service.py"]
