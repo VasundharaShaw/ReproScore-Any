@@ -1,0 +1,14 @@
+# Exclude everything by default, then re-include only what the Dockerfile
+# copies. Keeps the /home/jovyan dotfiles out of the build context.
+*
+
+!requirements.txt
+!requirements-service.txt
+!app.py
+!service.py
+!pipeline/
+!config/
+
+# Re-excludes inside the allowed directories
+**/__pycache__/
+**/*.pyc
