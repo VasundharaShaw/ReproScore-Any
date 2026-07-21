@@ -6,15 +6,14 @@ Rubrics are versioned YAML configurations that override default category
 weights and gate parameters, enabling domain-specific scoring.
 Run standalone:
     from src.scoring.rubric import load_rubric, Rubric
-    rubric = load_rubric("config/default_rubric.yaml")
+    rubric = load_rubric("config/rubrics/default.yaml")
     print(rubric.categories)
 """
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     import yaml
@@ -54,6 +53,10 @@ _DEFAULTS: Dict[str, Any] = {
     },
 }
 
+# Repo root, resolved from this file:
+# scoring -> src -> reproscore -> pipeline -> repo root
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
 
 @dataclass
 class Rubric:
@@ -68,24 +71,31 @@ class Rubric:
         cat_sum = sum(v["weight"] for v in self.categories.values())
         if abs(cat_sum - 1.0) > 0.01:
             raise ValueError(
-                f"Category weights must sum to 1.0 ± 0.01, got {cat_sum:.4f}"
+                f"Category weights must sum to 1.0 +/- 0.01, got {cat_sum:.4f}"
             )
         ros_sum = sum(v["weight"] for v in self.ros_components.values())
         if abs(ros_sum - 1.0) > 0.01:
             raise ValueError(
-                f"ROS component weights must sum to 1.0 ± 0.01, got {ros_sum:.4f}"
+                f"ROS component weights must sum to 1.0 +/- 0.01, got {ros_sum:.4f}"
             )
+
+
+def _candidate_paths() -> List[Path]:
+    """Search order for the default rubric. Absolute candidates come first so
+    the rubric is found regardless of the current working directory."""
+    return [
+        _REPO_ROOT / "config" / "rubrics" / "default.yaml",
+        _REPO_ROOT / "config" / "default_rubric.yaml",   # legacy layout
+        Path("config/rubrics/default.yaml"),
+        Path("config/default_rubric.yaml"),              # legacy layout
+        Path("default_rubric.yaml"),
+    ]
 
 
 def load_rubric(path: Optional[str | Path] = None) -> Rubric:
     data = dict(_DEFAULTS)
     if path is None:
-        candidates = [
-            Path(__file__).parent.parent.parent / "config" / "default_rubric.yaml",
-            Path("config/default_rubric.yaml"),
-            Path("default_rubric.yaml"),
-        ]
-        for c in candidates:
+        for c in _candidate_paths():
             if c.exists():
                 path = c
                 break
