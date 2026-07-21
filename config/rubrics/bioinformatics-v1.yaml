@@ -1,0 +1,38 @@
+# ReproScore Community Rubric — Bioinformatics
+# FAIR-aligned profile: data accessibility prioritised over documentation
+# and portability. Evaluated against the default profile in Samuel et al.,
+# "ReproScore: Separating Readiness from Outcome", Section 4.4.
+#
+# Category weights must sum to 1.0 (+/- 0.01); enforced by Rubric.validate().
+# Only `categories` is overridden here — penalties, ros_components and rcs
+# fall back to the defaults in config/default_rubric.yaml.
+
+name: bioinformatics-v1
+version: "1.0"
+
+categories:
+  E:
+    name: Environment Specification
+    weight: 0.35
+    tau: 40
+    k: 1.5
+  A:
+    name: Data Accessibility
+    weight: 0.40          # FAIR data priority
+    tau: 30
+    k: 1.5
+  D:
+    name: Documentation
+    weight: 0.10
+    tau: 20
+    k: 1.2
+  C:
+    name: Code Portability
+    weight: 0.05
+    tau: 25
+    k: 1.2
+  S:
+    name: Reproducibility Signals
+    weight: 0.10
+    tau: 30
+    k: 1.2
