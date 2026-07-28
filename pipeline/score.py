@@ -90,7 +90,7 @@ def build_evidence(conn, repo_id):
 
     # E - import success rate: the pipeline tags import failures as IMPORT_ERROR
     # (there is no DEPENDENCY_ERROR category), so match on the real value.
-    import_errors = sum(1 for r in rows if r[3] == "IMPORT_ERROR")
+    import_errors = sum(1 for r in rows if r[3] == "DEPENDENCY_ERROR")
     import_success_rate = (total - import_errors) / total
 
     scores = cur.execute(

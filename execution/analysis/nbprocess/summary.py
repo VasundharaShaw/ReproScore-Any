@@ -263,26 +263,11 @@ def insert_notebook_reproducibility_metrics(
 
 
 def fetch_previous_execution(conn, repository_id, notebook_id):
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT
-            n.code_cells,
-            e.diff,
-            e.diff_count,
-            e.duration
-        FROM notebooks n
-        LEFT JOIN executions e
-               ON e.notebook_id = n.id
-              AND e.repository_id = n.repository_id
-        WHERE n.repository_id = ?
-          AND n.id = ?
-        ORDER BY e.id DESC
-        LIMIT 1
-        """,
-        (repository_id, notebook_id)
-    )
-    return cur.fetchone()
+    # Legacy diff-against-previous-run lookup targeting an old schema
+    # (an `executions` table + notebooks.code_cells) that no longer exists;
+    # its result only fed a now-commented compare_old_vs_new call. Return
+    # None so the insert path does not crash on a fresh run.
+    return None
 
 def load_execution_log(log_path=EXEC_LOG_PATH):
     """

@@ -16,6 +16,7 @@ DB_FILE="$DB_DIR/db.sqlite"
 # Output DB — created fresh by pipeline, stores all execution results
 OUTPUT_DB_DIR="$PROJECT_ROOT/output/db"
 OUTPUT_DB_FILE="$OUTPUT_DB_DIR/db.sqlite"
+DB_FILE="$OUTPUT_DB_FILE"   # unified: one DB for reads + writes
 
 TARGET_COUNT="${TARGET_COUNT:-10}"
 export GIT_TERMINAL_PROMPT=0
