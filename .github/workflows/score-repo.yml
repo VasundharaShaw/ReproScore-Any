@@ -1,0 +1,97 @@
+name: Score Repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: "GitHub repo URL to score (e.g. https://github.com/alecarones/broom)"
+        required: true
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout ReproScore-Any
+        uses: actions/checkout@v4
+
+      - name: System dependencies (pyenv build toolchain + sqlite)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            sqlite3 make build-essential libssl-dev zlib1g-dev \
+            libbz2-dev libreadline-dev libsqlite3-dev libffi-dev \
+            liblzma-dev tk-dev libncursesw5-dev xz-utils curl git
+
+      - name: Install pyenv
+        run: |
+          curl https://pyenv.run | bash
+          echo "$HOME/.pyenv/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.pyenv/shims" >> "$GITHUB_PATH"
+          echo "PYENV_ROOT=$HOME/.pyenv" >> "$GITHUB_ENV"
+
+      - name: Base Python tooling (RRS scorer + notebook compare)
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install jupyter nbconvert nbformat nbclient nbdime
+          pip install -r requirements.txt
+
+      - name: Discover notebooks
+        id: discover
+        run: |
+          rm -rf /tmp/probe
+          git clone --depth 1 "${{ github.event.inputs.repo_url }}" /tmp/probe
+          NBS=$(cd /tmp/probe && find . -name '*.ipynb' \
+                  -not -path '*/.ipynb_checkpoints/*' \
+                  | sed 's|^\./||' | paste -sd ';' -)
+          if [ -z "$NBS" ]; then
+            echo "::error::No .ipynb notebooks found in repo"; exit 1
+          fi
+          echo "notebooks=$NBS" >> "$GITHUB_OUTPUT"
+          echo "Discovered notebooks: $NBS"
+
+      - name: Run execution pipeline (ROS evidence)
+        run: |
+          cd execution
+          printf '1\n%s\n%s\n\n\n' \
+            "${{ github.event.inputs.repo_url }}" \
+            "${{ steps.discover.outputs.notebooks }}" \
+            | bash run.sh
+
+      - name: Import execution evidence
+        run: |
+          python3 pipeline/import_execution.py \
+            --exec-db execution/output/db/db.sqlite \
+            --db output/db/db.sqlite
+
+      - name: Score RRS + ROS + RCS
+        run: |
+          REPO_PATH=$(echo "${{ github.event.inputs.repo_url }}" \
+            | sed -E 's|https?://github.com/||; s|\.git$||')
+          REPO_ID=$(sqlite3 output/db/db.sqlite \
+            "SELECT id FROM repo_targets WHERE repository='$REPO_PATH' LIMIT 1;")
+          CLONE_DIR=$(ls -d execution/output/cloned_repos/*/ | head -1)
+          echo "repo_path=$REPO_PATH  repo_id=$REPO_ID  clone=$CLONE_DIR"
+          python3 pipeline/score.py \
+            --repo-dir "$CLONE_DIR" \
+            --repo-id "$REPO_ID" \
+            --db output/db/db.sqlite
+
+      - name: Emit scores
+        run: |
+          REPO_PATH=$(echo "${{ github.event.inputs.repo_url }}" \
+            | sed -E 's|https?://github.com/||; s|\.git$||')
+          sqlite3 -json output/db/db.sqlite \
+            "SELECT repository, rrs, ros, rcs FROM repo_targets WHERE repository='$REPO_PATH';" \
+            > scores.json
+          echo "## ReproScore results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat scores.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat scores.json
+
+      - name: Upload scores artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scores
+          path: scores.json
