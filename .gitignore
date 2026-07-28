@@ -33,3 +33,5 @@ data_mounts/
 # Temp
 /tmp/
 .pyenv
+execution/output/
+execution/**/__pycache__/
