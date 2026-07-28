@@ -69,12 +69,29 @@ def build_evidence(conn, repo_id):
         return ExecutionEvidence()
 
     total = len(rows)
-    install_success = total > 0
+
+    # I - install / environment build: taken from the repo-level run outcome,
+    # not merely "execution rows exist". The pipeline sets run_status='SUCCESS'
+    # only when the environment built and the repo ran; env failures store the
+    # error type instead. None (no run row) leaves I out of the ROS average.
+    run_row = cur.execute(
+        "SELECT run_status FROM repository_runs WHERE repository_id = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (repo_id,)
+    ).fetchone()
+    install_success = (run_row[0] == "SUCCESS") if run_row else None
+
+    # X - clean execution: every notebook must be SUCCESS. SUCCESS_WITH_ERRORS
+    # counts as a fail (partial progress is still reflected in N and determinism).
     execution_success = all(r[0] == "SUCCESS" for r in rows)
+
     fully_executed = sum(1 for r in rows if r[1] and r[2] and r[1] == r[2] and r[1] > 0)
     notebook_exec_rate = fully_executed / total
-    dependency_errors = sum(1 for r in rows if r[3] == "DEPENDENCY_ERROR")
-    import_success_rate = (total - dependency_errors) / total
+
+    # E - import success rate: the pipeline tags import failures as IMPORT_ERROR
+    # (there is no DEPENDENCY_ERROR category), so match on the real value.
+    import_errors = sum(1 for r in rows if r[3] == "IMPORT_ERROR")
+    import_success_rate = (total - import_errors) / total
 
     scores = cur.execute(
         """
