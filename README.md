@@ -124,6 +124,8 @@ Computed only where sandboxed execution evidence exists. Six probes:
 
 All probes are optional. ROS normalises over whichever subset is available, so a partial run still yields a comparable 0–100 figure. When no probe is available, ROS is undefined and the system falls back to RCS = RRS.
 
+The current execution backend emits five of the six probes — I, X, Δ, N, and E′. **T (test pass rate) is not yet produced by the pipeline**, so ROS is presently normalised over those five. This is a deliberate gap, not a defect: adding a test signal later is non-breaking, as the scorer picks T up automatically once the pipeline emits it.
+
 Install success and import success are deliberately kept apart: the first tests whether the package manager can resolve dependencies, the second whether the code can import them at runtime. These diverge in practice, and collapsing them would hide a common failure mode.
 
 ---

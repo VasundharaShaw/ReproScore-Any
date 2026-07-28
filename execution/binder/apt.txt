@@ -1,0 +1,13 @@
+# System packages required by the pipeline
+
+# ── pyenv build dependencies ─────────────
+make
+build-essential
+libssl-dev
+zlib1g-dev
+libbz2-dev
+libreadline-dev
+libsqlite3-dev
+libffi-dev
+liblzma-dev
+ 
