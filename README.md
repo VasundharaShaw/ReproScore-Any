@@ -195,9 +195,11 @@ rubric = load_rubric("config/rubrics/bioinformatics-v1.yaml")
 
 Sum of contributions: **28.97**. Data raw score is 0, below the threshold of 10, so the **−15** data penalty fires.
 
-**RRS = 28.97 − 15 = 13.97**
+**RRS = 28.97 − 15 = 13.97**  (the pipeline stores this rounded to 13.7)
 
-The story here is not the gate — it cost roughly one point in total. It is that Data Accessibility is zero, which contributes nothing *and* triggers an outright 15-point deduction, while every other category is middling. Meanwhile, all four of broom's notebooks execute cleanly. This is the readiness–outcome gap in a single repository.
+Running broom's four notebooks through the execution backend fills in the outcome tier. The environment builds (I = 100) and all four notebooks are attempted (N = 100), but none completes without error (X = 0) and every one fails on a dependency import (E′ = 0). Output determinism is low (Δ = 11.38), though here that is a consequence of the notebooks aborting early rather than genuine run-to-run drift — cells that never execute cannot match their committed outputs. Over the five available probes this gives **ROS = 44.5** (α = 0.665; T is not emitted), and the composite is **RCS = (1 − 0.665) · 13.97 + 0.665 · 44.5 = 34.18**.
+
+The instructive part is that broom scores low on *both* tiers. RRS = 13.97 flags a repository that is statically under-specified — dependencies undeclared, data undescribed. ROS = 44.5 then confirms, from an actual run, that the notebooks fail, and fail on exactly the dependency imports RRS predicted from the static evidence. This is the *concordant* case: readiness and outcome agree the repository is in trouble, and agree for the same underlying reason. The readiness–outcome gap — high readiness masking a broken run, or a low-readiness repository that nonetheless executes — is the case where the two tiers *disagree*. broom is not that case; it is the baseline where they line up. Both readings are useful, and neither substitutes for the other.
 
 ---
 
