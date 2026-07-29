@@ -82,17 +82,32 @@ jobs:
         run: |
           REPO_PATH=$(echo "${{ github.event.inputs.repo_url }}" \
             | sed -E 's|https?://github.com/||; s|\.git$||')
+          REPO_ID=$(sqlite3 output/db/db.sqlite \
+            "SELECT id FROM repo_targets WHERE repository='$REPO_PATH' LIMIT 1;")
           sqlite3 -json output/db/db.sqlite \
             "SELECT repository, rrs, ros, rcs FROM repo_targets WHERE repository='$REPO_PATH';" \
             > scores.json
+          sqlite3 -json output/db/db.sqlite \
+            "SELECT ne.notebook_name AS notebook, ne.execution_status AS status, \
+                    ne.execution_duration AS duration, ne.total_code_cells AS cells, \
+                    ne.error_count AS errors, nrm.reproducibility_score AS repro \
+             FROM notebook_executions ne \
+             LEFT JOIN notebook_reproducibility_metrics nrm \
+               ON nrm.notebook_id = ne.notebook_id \
+              AND nrm.repository_id = ne.repository_id \
+             WHERE ne.repository_id = $REPO_ID;" \
+            > notebooks.json
           echo "## ReproScore results" >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
           cat scores.json >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat scores.json
+          cat notebooks.json
 
       - name: Upload scores artifact
         uses: actions/upload-artifact@v4
         with:
           name: scores
-          path: scores.json
+          path: |
+            scores.json
+            notebooks.json
