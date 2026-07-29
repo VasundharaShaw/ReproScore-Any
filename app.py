@@ -1,4 +1,7 @@
 import os, shutil, sqlite3, subprocess, sys, tempfile, time, traceback, json
+import io, zipfile
+from datetime import datetime, timezone
+import requests
 from pathlib import Path
 import gradio as gr
 
@@ -139,36 +142,143 @@ def validate_github_url(url):
         url = "https://" + url
     return url
 
+
+# ---------------------------------------------------------------------------
+# GitHub Actions execution backend (real ROS/RCS via per-repo pyenv/venv).
+# ---------------------------------------------------------------------------
+GH_OWNER    = os.environ.get("GH_OWNER", "VasundharaShaw")
+GH_REPO     = os.environ.get("GH_REPO", "ReproScore-Any")
+GH_WORKFLOW = os.environ.get("GH_WORKFLOW", "score-repo.yml")
+GH_REF      = os.environ.get("GH_REF", "main")
+GH_API      = "https://api.github.com"
+GH_POLL_SECONDS    = 15
+GH_TIMEOUT_SECONDS = 40 * 60
+
+
+def _gh_headers(token):
+    return {"Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28"}
+
+
+def _gh_dispatch(token, repo_url):
+    url = f"{GH_API}/repos/{GH_OWNER}/{GH_REPO}/actions/workflows/{GH_WORKFLOW}/dispatches"
+    r = requests.post(url, headers=_gh_headers(token),
+                      json={"ref": GH_REF, "inputs": {"repo_url": repo_url}}, timeout=30)
+    if r.status_code != 204:
+        raise RuntimeError(f"dispatch failed {r.status_code}: {r.text[:200]}")
+
+
+def _gh_find_run(token, repo_url, since):
+    url = f"{GH_API}/repos/{GH_OWNER}/{GH_REPO}/actions/workflows/{GH_WORKFLOW}/runs"
+    r = requests.get(url, headers=_gh_headers(token),
+                     params={"event": "workflow_dispatch", "per_page": 20}, timeout=30)
+    r.raise_for_status()
+    want = f"Score {repo_url}"
+    for run in r.json().get("workflow_runs", []):
+        created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+        if run.get("display_title") == want and created >= since:
+            return run["id"]
+    return None
+
+
+def _gh_download_scores(token, run_id):
+    url = f"{GH_API}/repos/{GH_OWNER}/{GH_REPO}/actions/runs/{run_id}/artifacts"
+    r = requests.get(url, headers=_gh_headers(token), timeout=30)
+    r.raise_for_status()
+    art = next((a for a in r.json().get("artifacts", []) if a["name"] == "scores"), None)
+    if not art:
+        raise RuntimeError("scores artifact not found")
+    zr = requests.get(art["archive_download_url"], headers=_gh_headers(token), timeout=60)
+    zr.raise_for_status()
+    scores, notebooks = None, []
+    with zipfile.ZipFile(io.BytesIO(zr.content)) as zf:
+        names = zf.namelist()
+        if "scores.json" in names:
+            data = json.load(zf.open("scores.json"))
+            scores = data[0] if data else None
+        if "notebooks.json" in names:
+            notebooks = json.load(zf.open("notebooks.json"))
+    return scores, notebooks
+
+
+def _fmt(v):
+    if v is None:
+        return "N/A"
+    return f"🟢 {v}" if v >= 60 else (f"🟡 {v}" if v >= 30 else f"🔴 {v}")
+
+
+def _nb_rows_from_json(notebooks):
+    rows = []
+    for nb in notebooks:
+        repro = nb.get("repro")
+        repro_str = f"{repro * 100:.1f}%" if isinstance(repro, (int, float)) else "—"
+        dur = nb.get("duration")
+        dur_str = f"{dur:.1f}s" if isinstance(dur, (int, float)) else "—"
+        rows.append([nb.get("notebook", "—"), nb.get("status", "—"), dur_str,
+                     str(nb.get("cells", "—")), str(nb.get("errors", "—")), repro_str])
+    return rows
+
+
+def build_summary(repo_name, scores, nb_count, ros_pending):
+    ros_disp = "⏳ Running on GitHub Actions…" if ros_pending else _fmt(scores.get("ros"))
+    rcs_disp = "⏳ Running on GitHub Actions…" if ros_pending else _fmt(scores.get("rcs"))
+    summary = f"""## 📊 Results for `{repo_name}`
+
+### Scores
+
+| Metric | Score | What it measures |
+|---|---|---|
+| **RRS** — Readiness | {_fmt(scores.get('rrs'))} | How the repository is *set up* (static, 26 sub-metrics) |
+| **ROS** — Outcome | {ros_disp} | Whether it *ran* (execution probes) |
+| **RCS** — Composite | {rcs_disp} | Blend, weighted by execution evidence (α ≤ 0.70) |
+
+### RRS Categories
+
+| Category | Weight | Score | What it looks for |
+|---|---|---|---|
+| **E** — Environment | 0.30 | {_fmt(scores.get('score_E'))} | Lockfiles, pinned deps, container spec, Python version |
+| **A** — Data | 0.25 | {_fmt(scores.get('score_A'))} | Data described, pointer to data, acquisition script |
+| **D** — Documentation | 0.20 | {_fmt(scores.get('score_D'))} | README, install steps, usage examples, entry point |
+| **C** — Code Portability | 0.15 | {_fmt(scores.get('score_C'))} | No absolute paths, resolvable imports, no secrets |
+| **S** — Repro Signals | 0.10 | {_fmt(scores.get('score_S'))} | Seeds, execution order, tests, CI, expected outputs |
+
+Categories are gated before weighting — partial credit is deliberately cheap —
+and hard penalties apply if Environment or Data score below 10.
+
+### Notebooks: {nb_count} executed
+"""
+    if (not ros_pending) and scores.get("ros") is None:
+        summary += NO_EXECUTION_EVIDENCE_NOTE
+    summary += RESULT_FOOTNOTE_MD
+    return summary
+
+
 def run_pipeline(github_url, progress=gr.Progress()):
     logs = []
     tmpdir = None
     try:
         url = validate_github_url(github_url)
         if not url:
-            return "❌ Please enter a valid GitHub repository URL.", "", [], ""
+            yield "❌ Please enter a valid GitHub repository URL.", "", [], ""
+            return
         repo_name = url.rstrip("/").split("/")[-1].removesuffix(".git")
-        logs.append(f"🚀 Starting pipeline for: {url}")
-        progress(0.05, desc="Cloning repository...")
+        logs.append(f"🚀 Starting: {url}")
+
+        progress(0.05, desc="Cloning repository (RRS)...")
         tmpdir = Path(tempfile.mkdtemp())
         repo_dir = tmpdir / repo_name
-        r = subprocess.run(["git","clone","--depth","1",url,str(repo_dir)],
+        r = subprocess.run(["git", "clone", "--depth", "1", url, str(repo_dir)],
             capture_output=True, text=True, timeout=60,
-            env={**os.environ,"GIT_TERMINAL_PROMPT":"0"})
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         if r.returncode != 0:
             logs.append(f"❌ Clone failed: {r.stderr[:300]}")
-            return "\n".join(logs),"",[],""
+            yield "\n".join(logs), "\n".join(logs), [], ""
+            return
         logs.append("✅ Clone complete.")
-        progress(0.2, desc="Discovering notebooks...")
-        nbs = sorted(p for p in repo_dir.rglob("*.ipynb")
-            if ".ipynb_checkpoints" not in p.parts and not p.stem.endswith("_output"))
-        if not nbs:
-            logs.append("⚠️ No notebooks found.")
-            return "\n".join(logs),"",[],""
-        if len(nbs) > MAX_NOTEBOOKS:
-            logs.append(f"⚠️ Capping at {MAX_NOTEBOOKS} notebooks.")
-            nbs = nbs[:MAX_NOTEBOOKS]
-        logs.append(f"📓 Found {len(nbs)} notebook(s).")
-        progress(0.3, desc="Running RRS static analysis...")
+
+        # ---- RRS: local static analysis, instant ----
+        progress(0.15, desc="Running RRS static analysis...")
         db_path = tmpdir / "_score.sqlite"
         con = sqlite3.connect(db_path)
         con.execute("""CREATE TABLE IF NOT EXISTS repo_targets (
@@ -177,89 +287,88 @@ def run_pipeline(github_url, progress=gr.Progress()):
             setups_count INTEGER DEFAULT 0, requirements_count INTEGER DEFAULT 0,
             rrs REAL, score_E REAL, score_A REAL, score_D REAL, score_C REAL,
             score_S REAL, ros REAL, rcs REAL, paper_doi TEXT)""")
-        con.execute("INSERT INTO repo_targets (repository) VALUES (?)",(repo_name,))
+        con.execute("INSERT INTO repo_targets (repository) VALUES (?)", (repo_name,))
         repo_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
         con.commit(); con.close()
         score_script = REPO_ROOT / "pipeline" / "score.py"
-        subprocess.run([sys.executable,str(score_script),
-            "--repo-dir",str(repo_dir),"--repo-id",str(repo_id),"--db",str(db_path)],
+        subprocess.run([sys.executable, str(score_script),
+            "--repo-dir", str(repo_dir), "--repo-id", str(repo_id), "--db", str(db_path)],
             capture_output=True, text=True, timeout=60)
         con = sqlite3.connect(db_path)
-        row = con.execute("SELECT rrs,score_E,score_A,score_D,score_C,score_S,ros,rcs FROM repo_targets WHERE id=?",(repo_id,)).fetchone()
+        row = con.execute("SELECT rrs,score_E,score_A,score_D,score_C,score_S "
+                          "FROM repo_targets WHERE id=?", (repo_id,)).fetchone()
         con.close()
-        keys = ["rrs","score_E","score_A","score_D","score_C","score_S","ros","rcs"]
-        scores = {k: round(v,1) if v is not None else None for k,v in zip(keys,row)} if row else {}
-        logs.append(f"✅ RRS={scores.get('rrs')} ROS={scores.get('ros')} RCS={scores.get('rcs')}")
-        nb_results = []
-        for i,nb in enumerate(nbs):
-            progress(0.4+0.5*(i/max(len(nbs),1)), desc=f"Executing {nb.name}...")
-            logs.append(f"▶️ Executing {nb.name}...")
-            out = nb.parent / f"{nb.stem}_output.ipynb"
-            start = time.monotonic()
-            subprocess.run([sys.executable,"-m","jupyter","nbconvert",
-                "--to","notebook","--execute","--allow-errors",
-                f"--ExecutePreprocessor.timeout={NOTEBOOK_TIMEOUT}",
-                "--ExecutePreprocessor.kernel_name=python3",
-                str(nb),"--output",str(out)],
-                capture_output=True, text=True, timeout=NOTEBOOK_TIMEOUT+10)
-            duration = round(time.monotonic()-start,1)
-            if not out.exists():
-                logs.append(f"  ❌ Failed ({duration}s)")
-                nb_results.append([nb.name,"FAILED",f"{duration}s","—","—","0%"])
-                continue
-            nb_data = json.loads(out.read_text(errors="replace"))
-            total = sum(1 for c in nb_data.get("cells",[]) if c.get("cell_type")=="code")
-            errors = sum(1 for c in nb_data.get("cells",[]) if c.get("cell_type")=="code"
-                for o in c.get("outputs",[]) if o.get("output_type")=="error")
-            nb_orig = json.loads(nb.read_text(errors="replace"))
-            orig_cells = [c for c in nb_orig.get("cells",[]) if c.get("cell_type")=="code"]
-            exec_cells = [c for c in nb_data.get("cells",[]) if c.get("cell_type")=="code"]
-            n = min(len(orig_cells),len(exec_cells))
-            identical = sum(1 for o,e in zip(orig_cells,exec_cells) if str(o.get("outputs",""))==str(e.get("outputs","")))
-            score = round(identical/n*100,1) if n>0 else 0
-            status = "SUCCESS_WITH_ERRORS" if errors else "SUCCESS"
-            logs.append(f"  {'⚠️' if errors else '✅'} {status} — {total} cells, {errors} errors ({duration}s)")
-            nb_results.append([nb.name, status, f"{duration}s", str(total), str(errors), f"{score}%"])
+        keys = ["rrs", "score_E", "score_A", "score_D", "score_C", "score_S"]
+        scores = {k: round(v, 1) if v is not None else None
+                  for k, v in zip(keys, row)} if row else {}
+        scores["ros"] = None
+        scores["rcs"] = None
+        logs.append(f"✅ RRS={scores.get('rrs')}")
 
-        def fmt(v):
-            if v is None: return "N/A"
-            return f"🟢 {v}" if v>=60 else f"🟡 {v}" if v>=30 else f"🔴 {v}"
+        # ---- Tier 1: show RRS immediately, ROS/RCS pending ----
+        yield build_summary(repo_name, scores, 0, ros_pending=True), "\n".join(logs), [], url
 
-        summary = f"""## 📊 Results for `{repo_name}`
+        # ---- Tier 2: real ROS/RCS via GitHub Actions ----
+        token = os.environ.get("GH_DISPATCH_TOKEN")
+        notebooks = []
+        if not token:
+            logs.append("⚠️ GH_DISPATCH_TOKEN not set — showing RRS only (ROS/RCS unavailable).")
+        else:
+            try:
+                progress(0.30, desc="Dispatching execution on GitHub Actions...")
+                since = datetime.now(timezone.utc)
+                _gh_dispatch(token, url)
+                logs.append("🛰️ Dispatched execution run on GitHub Actions.")
+                time.sleep(5)
+                run_id = None
+                for _ in range(12):
+                    run_id = _gh_find_run(token, url, since)
+                    if run_id:
+                        break
+                    time.sleep(5)
+                if not run_id:
+                    raise RuntimeError("could not locate the dispatched run")
+                logs.append(f"🔎 Run {run_id}; waiting for completion...")
+                start = time.time()
+                conclusion = None
+                while True:
+                    rr = requests.get(f"{GH_API}/repos/{GH_OWNER}/{GH_REPO}/actions/runs/{run_id}",
+                                      headers=_gh_headers(token), timeout=30)
+                    rr.raise_for_status()
+                    run = rr.json()
+                    if run["status"] == "completed":
+                        conclusion = run.get("conclusion")
+                        break
+                    if time.time() - start > GH_TIMEOUT_SECONDS:
+                        raise RuntimeError("execution run timed out")
+                    elapsed = int(time.time() - start)
+                    progress(min(0.30 + elapsed / GH_TIMEOUT_SECONDS * 0.60, 0.90),
+                             desc=f"Executing on GitHub Actions... ({elapsed}s)")
+                    time.sleep(GH_POLL_SECONDS)
+                if conclusion != "success":
+                    raise RuntimeError(f"execution run finished with conclusion={conclusion}")
+                progress(0.92, desc="Downloading scores...")
+                gh_scores, notebooks = _gh_download_scores(token, run_id)
+                if gh_scores:
+                    scores["ros"] = (round(gh_scores["ros"], 1)
+                                     if gh_scores.get("ros") is not None else None)
+                    scores["rcs"] = (round(gh_scores["rcs"], 1)
+                                     if gh_scores.get("rcs") is not None else None)
+                    if scores.get("rrs") is None and gh_scores.get("rrs") is not None:
+                        scores["rrs"] = round(gh_scores["rrs"], 1)
+                logs.append(f"✅ ROS={scores.get('ros')} RCS={scores.get('rcs')} "
+                            f"· {len(notebooks)} notebook(s).")
+            except Exception as e:
+                logs.append(f"⚠️ Execution backend failed: {e}. Showing RRS only.")
 
-### Scores
-
-| Metric | Score | What it measures |
-|---|---|---|
-| **RRS** — Readiness | {fmt(scores.get('rrs'))} | How the repository is *set up* (static, 26 sub-metrics) |
-| **ROS** — Outcome | {fmt(scores.get('ros'))} | Whether it *ran* (execution probes) |
-| **RCS** — Composite | {fmt(scores.get('rcs'))} | Blend, weighted by execution evidence (α ≤ 0.70) |
-
-### RRS Categories
-
-| Category | Weight | Score | What it looks for |
-|---|---|---|---|
-| **E** — Environment | 0.30 | {fmt(scores.get('score_E'))} | Lockfiles, pinned deps, container spec, Python version |
-| **A** — Data | 0.25 | {fmt(scores.get('score_A'))} | Data described, pointer to data, acquisition script |
-| **D** — Documentation | 0.20 | {fmt(scores.get('score_D'))} | README, install steps, usage examples, entry point |
-| **C** — Code Portability | 0.15 | {fmt(scores.get('score_C'))} | No absolute paths, resolvable imports, no secrets |
-| **S** — Repro Signals | 0.10 | {fmt(scores.get('score_S'))} | Seeds, execution order, tests, CI, expected outputs |
-
-Categories are gated before weighting — partial credit is deliberately cheap —
-and hard penalties apply if Environment or Data score below 10.
-
-### Notebooks: {len(nb_results)} executed
-"""
-        if scores.get("ros") is None:
-            summary += NO_EXECUTION_EVIDENCE_NOTE
-        summary += RESULT_FOOTNOTE_MD
-
-        logs.append("🏁 Done!")
+        nb_rows = _nb_rows_from_json(notebooks)
         progress(1.0, desc="Done!")
-        return summary, "\n".join(logs), nb_results, url
+        logs.append("🏁 Done!")
+        yield build_summary(repo_name, scores, len(nb_rows), ros_pending=False), \
+              "\n".join(logs), nb_rows, url
     except Exception as e:
         logs.append(f"❌ Error: {e}\n{traceback.format_exc()}")
-        return "\n".join(logs), "\n".join(logs), [], ""
+        yield "\n".join(logs), "\n".join(logs), [], ""
     finally:
         if tmpdir and tmpdir.exists():
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -305,6 +414,8 @@ with gr.Blocks(title="ReproScore") as demo:
         outputs=[results_md, logs_box, nb_table, repo_state],
     )
 
+
+demo.queue()
 
 if __name__ == "__main__":
     root_path = os.environ.get("GRADIO_ROOT_PATH", "")
