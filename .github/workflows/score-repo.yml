@@ -1,4 +1,5 @@
 name: Score Repository
+run-name: Score ${{ inputs.repo_url }}
 
 on:
   workflow_dispatch:
