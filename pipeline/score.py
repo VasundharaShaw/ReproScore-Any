@@ -88,8 +88,8 @@ def build_evidence(conn, repo_id):
     fully_executed = sum(1 for r in rows if r[1] and r[2] and r[1] == r[2] and r[1] > 0)
     notebook_exec_rate = fully_executed / total
 
-    # E - import success rate: the pipeline tags import failures as IMPORT_ERROR
-    # (there is no DEPENDENCY_ERROR category), so match on the real value.
+    # E - import success rate: dependency/import failures are
+    # classified as DEPENDENCY_ERROR by the execution analysis step.
     import_errors = sum(1 for r in rows if r[3] == "DEPENDENCY_ERROR")
     import_success_rate = (total - import_errors) / total
 

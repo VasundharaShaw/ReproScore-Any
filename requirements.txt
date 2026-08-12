@@ -9,3 +9,4 @@ seaborn
 scipy
 pyyaml
 gradio>=4.0.0
+websocket-client

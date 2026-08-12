@@ -8,6 +8,7 @@
 !service.py
 !pipeline/
 !config/
+!execution/
 
 # Re-excludes inside the allowed directories
 **/__pycache__/
