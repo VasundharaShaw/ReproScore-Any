@@ -2,6 +2,7 @@ requests
 nbformat
 nbdime
 nbconvert
+websocket-client
 pandas
 matplotlib
 seaborn
