@@ -5,6 +5,16 @@ import requests
 from pathlib import Path
 import gradio as gr
 
+# --- OAuth wrapper additions (imports) ---
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse, Response
+try:
+    from jupyterhub.services.auth import HubOAuth
+except Exception:  # jupyterhub not installed in some environments (e.g. HF Space)
+    HubOAuth = None
+# --- end additions ---
+
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 NOTEBOOK_TIMEOUT = 120
@@ -374,6 +384,47 @@ def run_pipeline(github_url, progress=gr.Progress()):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# OAuth token-read wrapper (minimal — proves the visiting user's token/scopes).
+# Does NOT spawn anything yet. GActions path above is untouched.
+# ---------------------------------------------------------------------------
+SERVICE_PREFIX = os.environ.get("JUPYTERHUB_SERVICE_PREFIX", "/")
+_HUB_API_TOKEN = os.environ.get("JUPYTERHUB_API_TOKEN")
+TOKEN_COOKIE = "reproscore-token"
+
+# auth is None when not running under JupyterHub (e.g. HF Space) — the app then
+# behaves exactly as before, and the debug tab reports that cleanly.
+auth = None
+if HubOAuth is not None and _HUB_API_TOKEN:
+    auth = HubOAuth(api_token=_HUB_API_TOKEN, cache_max_age=60)
+
+
+def _login_path():
+    base = SERVICE_PREFIX.rstrip("/")
+    return (base + "/login") if base else "/login"
+
+
+def show_my_scopes(request: gr.Request):
+    """Read the visiting user's OAuth token off the cookie and report its scopes."""
+    if auth is None:
+        return ("Not running under JupyterHub (no JUPYTERHUB_API_TOKEN). "
+                "The OAuth path is inactive here; this is expected on the HF Space.")
+    token = request.cookies.get(TOKEN_COOKIE)
+    if not token:
+        return (f"No token yet. Visit  {_login_path()}  once in this browser to "
+                f"run the OAuth login, then come back and click again.")
+    user = auth.user_for_token(token)
+    if not user:
+        return "Token present but invalid or expired. Re-run login."
+    scopes = user.get("scopes", [])
+    lines = [f"user: {user.get('name')}", "", "scopes:"]
+    lines += [f"  {s}" for s in sorted(scopes)]
+    want = {"servers", "access:servers"}
+    have = {s.split("!")[0] for s in scopes}
+    lines += ["", "spawn-capable: " + ("YES" if want & have else "NO — server scopes missing")]
+    return "\n".join(lines)
+
+
 with gr.Blocks(title="ReproScore") as demo:
     gr.HTML(
         "<div style='text-align:center;padding:1rem'>"
@@ -407,16 +458,63 @@ with gr.Blocks(title="ReproScore") as demo:
             gr.Markdown(SCORE_LEGEND_MD)
         with gr.TabItem("📋 Logs"):
             logs_box = gr.Textbox(label="Logs", lines=20, interactive=False)
+        with gr.TabItem("🔑 Auth (debug)"):
+            gr.Markdown(
+                "Temporary debug tab. Reads the visiting user's Hub OAuth token "
+                "from the `reproscore-token` cookie and shows its scopes. "
+                "Proves whether the token that reaches this service can spawn a server."
+            )
+            scopes_btn = gr.Button("Show my Hub token scopes")
+            scopes_out = gr.Textbox(label="Token scopes", lines=14, interactive=False)
     repo_state = gr.State("")
     run_btn.click(
         fn=run_pipeline,
         inputs=[url_input],
         outputs=[results_md, logs_box, nb_table, repo_state],
     )
+    scopes_btn.click(fn=show_my_scopes, inputs=None, outputs=[scopes_out])
 
 
 demo.queue()
 
+# ---------------------------------------------------------------------------
+# FastAPI wrapper owns the OAuth dance; Gradio is mounted underneath and only
+# reads the token cookie. When auth is None, this still runs as a plain app.
+# ---------------------------------------------------------------------------
+fastapi_app = FastAPI()
+
+
+@fastapi_app.get(SERVICE_PREFIX + "oauth_callback")
+async def oauth_callback(request: Request):
+    if auth is None:
+        return Response("OAuth not configured", status_code=404)
+    code = request.query_params.get("code")
+    if code is None:
+        return Response("Forbidden", status_code=403)
+    arg_state = request.query_params.get("state")
+    cookie_state = request.cookies.get(auth.state_cookie_name)
+    if arg_state is None or arg_state != cookie_state:
+        return Response("Forbidden", status_code=403)
+    token = auth.token_for_code(code)
+    next_url = auth.get_next_url(cookie_state) or SERVICE_PREFIX
+    resp = RedirectResponse(next_url, status_code=302)
+    resp.set_cookie(TOKEN_COOKIE, token, httponly=True, samesite="lax")
+    return resp
+
+
+@fastapi_app.get(_login_path())
+async def login(request: Request):
+    if auth is None:
+        return Response("OAuth not configured", status_code=404)
+    state = auth.generate_state(next_url=SERVICE_PREFIX)
+    resp = RedirectResponse(auth.login_url + f"&state={state}", status_code=302)
+    resp.set_cookie(auth.state_cookie_name, state, httponly=True, samesite="lax")
+    return resp
+
+
+_mount_path = SERVICE_PREFIX.rstrip("/") or "/"
+app = gr.mount_gradio_app(fastapi_app, demo, path=_mount_path)
+
+
 if __name__ == "__main__":
-    root_path = os.environ.get("GRADIO_ROOT_PATH", "")
-    demo.launch(server_name="0.0.0.0", server_port=7860, root_path=root_path)
+    uvicorn.run(app, host="0.0.0.0", port=7860)
