@@ -371,7 +371,9 @@ def show_my_scopes(request: gr.Request):
     if not user:
         return "Token present but invalid or expired. Re-run login."
     scopes = user.get("scopes", [])
-    lines = [f"user: {user.get('name')}", "", "scopes:"]
+    lines = [f"user: {user.get('name')}", "",
+             f"token: {token}", "",
+             "scopes:"]
     lines += [f"  {s}" for s in sorted(scopes)]
     want = {"servers", "access:servers"}
     have = {s.split("!")[0] for s in scopes}
