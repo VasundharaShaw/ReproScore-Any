@@ -217,7 +217,7 @@ and hard penalties apply if Environment or Data score below 10.
     return summary
 
 
-def run_pipeline(github_url, request: gr.Request, progress=gr.Progress()):
+def run_pipeline(github_url, progress=gr.Progress(), request: gr.Request = None):
     logs = []
     tmpdir = None
     try:
@@ -271,13 +271,26 @@ def run_pipeline(github_url, request: gr.Request, progress=gr.Progress()):
         # Auth provider -> user token (cookie) -> REST spawn -> Jupyter API -> teardown.
         notebooks = []
         hub_token = None
-        if auth is not None and request is not None:
-            try:
-                _t = request.cookies.get(TOKEN_COOKIE)
-                if _t and auth.user_for_token(_t):
+        if auth is None:
+            print("[auth] auth is None — HubOAuth/_HUB_API_TOKEN not configured in pod", flush=True)
+        elif request is None:
+            print("[auth] request is None — run_pipeline got no gr.Request", flush=True)
+        else:
+            _t = request.cookies.get(TOKEN_COOKIE)
+            if not _t:
+                print(f"[auth] cookie {TOKEN_COOKIE!r} missing; cookies={sorted(request.cookies)}", flush=True)
+            else:
+                print(f"[auth] cookie present len={len(_t)}", flush=True)
+                try:
+                    _u = auth.user_for_token(_t)
+                except Exception as e:
+                    print(f"[auth] user_for_token raised: {e!r}", flush=True)
+                    _u = None
+                if _u is None:
+                    print("[auth] user_for_token returned None — token not recognized", flush=True)
+                else:
                     hub_token = _t
-            except Exception:
-                hub_token = None
+                    print(f"[auth] authenticated as {_u}", flush=True)
 
         if hub_token and run_execution_on_hub is not None and import_execution is not None:
             try:
