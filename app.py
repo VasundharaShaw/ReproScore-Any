@@ -16,12 +16,15 @@ except Exception:  # jupyterhub not installed in some environments (e.g. HF Spac
 # --- end additions ---
 
 # --- Hub-native bridge (optional; present on Hub, no-op on HF) ---
+_BRIDGE_IMPORT_ERROR = None
 try:
     from execution.bridge.hub_runner import run_execution_on_hub
     from pipeline.import_execution import import_execution
-except Exception:
+except Exception as _e:
+    import traceback as _tb
     run_execution_on_hub = None
     import_execution = None
+    _BRIDGE_IMPORT_ERROR = _tb.format_exc()
 # --- end bridge imports ---
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -295,6 +298,8 @@ def run_pipeline(github_url, progress=gr.Progress(), request: gr.Request = None)
                     hub_token = _t
                     _auth_log(f"[auth] authenticated as {_u}")
 
+        if hub_token and (run_execution_on_hub is None or import_execution is None):
+            logs.append(f"[exec] bridge import failed at startup: {_BRIDGE_IMPORT_ERROR}")
         if hub_token and run_execution_on_hub is not None and import_execution is not None:
             try:
                 nb_paths = sorted(
