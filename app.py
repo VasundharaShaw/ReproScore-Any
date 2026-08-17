@@ -223,8 +223,7 @@ def run_pipeline(github_url, request: gr.Request, progress=gr.Progress()):
     try:
         url = validate_github_url(github_url)
         if not url:
-            yield "❌ Please enter a valid GitHub repository URL.", "", [], ""
-            return
+            return "❌ Please enter a valid GitHub repository URL.", "", [], ""
         repo_name = url.rstrip("/").split("/")[-1].removesuffix(".git")
         repo_slug = "/".join(url.rstrip("/").removesuffix(".git").split("/")[-2:])
         logs.append(f"🚀 Starting: {url}")
@@ -237,8 +236,7 @@ def run_pipeline(github_url, request: gr.Request, progress=gr.Progress()):
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         if r.returncode != 0:
             logs.append(f"❌ Clone failed: {r.stderr[:300]}")
-            yield "\n".join(logs), "\n".join(logs), [], ""
-            return
+            return "\n".join(logs), "\n".join(logs), [], ""
         logs.append("✅ Clone complete.")
 
         # ---- RRS: local static analysis, instant ----
@@ -268,9 +266,6 @@ def run_pipeline(github_url, request: gr.Request, progress=gr.Progress()):
         scores["ros"] = None
         scores["rcs"] = None
         logs.append(f"✅ RRS={scores.get('rrs')}")
-
-        # ---- Tier 1: show RRS immediately, ROS/RCS pending ----
-        yield build_summary(repo_name, scores, 0, ros_pending=True), "\n".join(logs), [], url
 
         # ---- Tier 2: real ROS/RCS via Hub-native execution ----
         # Auth provider -> user token (cookie) -> REST spawn -> Jupyter API -> teardown.
@@ -328,11 +323,11 @@ def run_pipeline(github_url, request: gr.Request, progress=gr.Progress()):
         nb_rows = _nb_rows_from_json(notebooks)
         progress(1.0, desc="Done!")
         logs.append("🏁 Done!")
-        yield build_summary(repo_name, scores, len(nb_rows), ros_pending=False), \
+        return build_summary(repo_name, scores, len(nb_rows), ros_pending=False), \
               "\n".join(logs), nb_rows, url
     except Exception as e:
         logs.append(f"❌ Error: {e}\n{traceback.format_exc()}")
-        yield "\n".join(logs), "\n".join(logs), [], ""
+        return "\n".join(logs), "\n".join(logs), [], ""
     finally:
         if tmpdir and tmpdir.exists():
             shutil.rmtree(tmpdir, ignore_errors=True)
