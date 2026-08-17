@@ -11,7 +11,10 @@ import time
 
 import requests
 
-HUB = os.environ.get("REPROSCORE_HUB", "https://hub.nfdi-jupyter.de")
+_api_url = os.environ.get("JUPYTERHUB_API_URL", "")
+# JUPYTERHUB_API_URL is like https://host/hub/api; strip suffix to get base host
+_base = _api_url.split("/hub/api")[0] if _api_url else ""
+HUB = _base or os.environ.get("REPROSCORE_HUB") or "https://hub.nfdi-jupyter.de"
 DEFAULT_SYSTEM = os.environ.get("REPROSCORE_SYSTEM", "JSC-Cloud")
 DEFAULT_FLAVOR = os.environ.get("REPROSCORE_FLAVOR", "m1nfdi")
 
