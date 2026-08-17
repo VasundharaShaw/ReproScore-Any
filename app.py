@@ -217,7 +217,7 @@ and hard penalties apply if Environment or Data score below 10.
     return summary
 
 
-def run_pipeline(github_url, progress=gr.Progress(), request: gr.Request = None):
+def run_pipeline(github_url, request: gr.Request, progress=gr.Progress()):
     logs = []
     tmpdir = None
     try:
