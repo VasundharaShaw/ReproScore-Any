@@ -271,26 +271,29 @@ def run_pipeline(github_url, progress=gr.Progress(), request: gr.Request = None)
         # Auth provider -> user token (cookie) -> REST spawn -> Jupyter API -> teardown.
         notebooks = []
         hub_token = None
+        def _auth_log(msg):
+            print(msg, flush=True)
+            logs.append(msg)
         if auth is None:
-            print("[auth] auth is None — HubOAuth/_HUB_API_TOKEN not configured in pod", flush=True)
+            _auth_log("[auth] auth is None — HubOAuth/_HUB_API_TOKEN not configured in pod")
         elif request is None:
-            print("[auth] request is None — run_pipeline got no gr.Request", flush=True)
+            _auth_log("[auth] request is None — run_pipeline got no gr.Request")
         else:
             _t = request.cookies.get(TOKEN_COOKIE)
             if not _t:
-                print(f"[auth] cookie {TOKEN_COOKIE!r} missing; cookies={sorted(request.cookies)}", flush=True)
+                _auth_log(f"[auth] cookie {TOKEN_COOKIE!r} missing; cookies={sorted(request.cookies)}")
             else:
-                print(f"[auth] cookie present len={len(_t)}", flush=True)
+                _auth_log(f"[auth] cookie present len={len(_t)}")
                 try:
                     _u = auth.user_for_token(_t)
                 except Exception as e:
-                    print(f"[auth] user_for_token raised: {e!r}", flush=True)
+                    _auth_log(f"[auth] user_for_token raised: {e!r}")
                     _u = None
                 if _u is None:
-                    print("[auth] user_for_token returned None — token not recognized", flush=True)
+                    _auth_log("[auth] user_for_token returned None — token not recognized")
                 else:
                     hub_token = _t
-                    print(f"[auth] authenticated as {_u}", flush=True)
+                    _auth_log(f"[auth] authenticated as {_u}")
 
         if hub_token and run_execution_on_hub is not None and import_execution is not None:
             try:
