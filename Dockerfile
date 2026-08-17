@@ -36,6 +36,7 @@ COPY service.py .
 
 # Copy pipeline code
 COPY pipeline/ ./pipeline/
+COPY execution/ ./execution/
 COPY config/ ./config/
 
 # Install Python dependencies (service pins on top of base requirements)
