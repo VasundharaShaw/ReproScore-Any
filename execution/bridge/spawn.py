@@ -62,6 +62,8 @@ def spawn_server(token, repo, *, system=DEFAULT_SYSTEM, flavor=DEFAULT_FLAVOR,
         s = requests.get(status_url, headers=_auth(token), verify=verify, timeout=30)
         s.raise_for_status()
         status = s.json().get("status")
+        print(f"[spawn] {int(time.time() - t0)}s status={status} "
+              f"servername={servername}", flush=True)
         if on_status:
             on_status(int(time.time() - t0), status)
         if status == "running":

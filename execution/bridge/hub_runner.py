@@ -20,6 +20,7 @@ def run_execution_on_hub(*, token, repo, notebook_paths, exec_db,
     summary. The server is ALWAYS torn down, even on error.
     """
     def log(msg):
+        print(f"[hub_runner] {msg}", flush=True)
         if on_log:
             on_log(msg)
 
