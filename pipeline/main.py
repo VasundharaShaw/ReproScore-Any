@@ -7,6 +7,8 @@ Usage:
     python3 -m pipeline run --count N             # process N repos from DB
     python3 -m pipeline run --interactive         # enter a single repo URL manually
     python3 -m pipeline score --repo-dir <path> --repo-id <int>
+    python3 -m pipeline export --format csv --out scores.csv            # all repos
+    python3 -m pipeline export --format pdf --repo-id <int> --out r.pdf # one repo
 
 Optional token (for higher GitHub API rate limits):
     export GITHUB_API_TOKEN=your_token_here
@@ -76,6 +78,53 @@ def cmd_score(args) -> int:
     return result.returncode
 
 
+def cmd_export(args) -> int:
+    """Export scores from repo_targets to CSV (all or one repo) or PDF (one repo)."""
+    import sqlite3
+    from pipeline.export import to_csv, to_pdf
+
+    if args.format == "pdf" and args.repo_id is None:
+        print("[ERROR] --repo-id is required for --format pdf.", file=sys.stderr)
+        return 1
+
+    if not Path(DB_FILE).is_file():
+        print(f"[ERROR] database not found: {DB_FILE}\n"
+              f"        Run the pipeline first (bash run.sh) to create and fill it.",
+              file=sys.stderr)
+        return 1
+
+    con = sqlite3.connect(str(DB_FILE))
+    con.row_factory = sqlite3.Row
+    cols = {r[1] for r in con.execute("PRAGMA table_info(repo_targets)")}
+    if not cols:
+        print(f"[ERROR] no repo_targets table in {DB_FILE}", file=sys.stderr)
+        return 1
+    want = [c for c in ("id", "repository", "rrs", "score_E", "score_A", "score_D",
+                        "score_C", "score_S", "ros", "rcs") if c in cols]
+    sql = f"SELECT {', '.join(want)} FROM repo_targets"
+    params = ()
+    if args.repo_id is not None:
+        sql += " WHERE id = ?"
+        params = (args.repo_id,)
+    rows = [dict(r) for r in con.execute(sql, params)]
+    con.close()
+
+    if not rows:
+        print("[ERROR] no matching rows in repo_targets.", file=sys.stderr)
+        return 1
+
+    results = [{"repo": r.get("repository"), "rubric": "default", **r} for r in rows]
+
+    if args.format == "csv":
+        if os.path.exists(args.out):
+            os.remove(args.out)  # fresh file, not appended
+        to_csv(results, args.out)
+    else:
+        to_pdf(results[0], args.out)
+    print(f"[EXPORT] wrote {len(results)} repo(s) to {args.out}")
+    return 0
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def build_parser() -> argparse.ArgumentParser:
@@ -98,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
     score_p.add_argument("--repo-id", required=True, type=int,
                          help="Row ID in repo_targets table")
 
+    exp_p = sub.add_parser("export", help="Export scores to CSV or PDF")
+    exp_p.add_argument("--format", choices=["csv", "pdf"], required=True)
+    exp_p.add_argument("--out", required=True, help="Output file path")
+    exp_p.add_argument("--repo-id", type=int, default=None,
+                       help="Row ID in repo_targets (required for pdf; optional for csv)")
+
     return parser
 
 
@@ -109,6 +164,7 @@ def main():
         "setup": cmd_setup,
         "run":   cmd_run,
         "score": cmd_score,
+        "export": cmd_export,
     }
     sys.exit(handlers[args.command](args))
 

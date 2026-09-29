@@ -71,8 +71,8 @@ def process_repo(
 ) -> bool:
     """
     Full per-repo flow:
-      validate → clone/pull → discover → score → requirements
-      → setup env → execute → compare → finalize
+      validate → clone/pull → discover → score (RRS) → requirements
+      → setup env → execute → compare → finalize → re-score (ROS/RCS)
 
     Returns True if the repo executed successfully.
     """
@@ -192,6 +192,19 @@ def process_repo(
     total = elapsed_sec(start)
     finalize_repository_run(db_file, run_id, "SUCCESS",
                             "Repository executed successfully", total)
+
+    # 9. Re-score now that execution evidence exists (ROS/RCS).
+    # Must run AFTER finalize: score.py derives install success (I)
+    # from repository_runs.run_status, which is only SUCCESS from here.
+    subprocess.run(
+        [sys.executable, str(score_script),
+         "--repo-dir", str(repo_dir),
+         "--repo-id", str(repo_id),
+         "--db", str(db_file)],
+        stdout=open(log_file, "a"), stderr=subprocess.STDOUT,
+    )
+    log("[REPO] Re-scoring with execution evidence complete.")
+
     log(f"[REPO] ── Done: {repo_name} ({total}s) ──────────────────────")
     return True
 

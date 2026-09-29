@@ -27,6 +27,15 @@ except Exception as _e:
     _BRIDGE_IMPORT_ERROR = _tb.format_exc()
 # --- end bridge imports ---
 
+# --- CSV/PDF export ---
+_EXPORT_IMPORT_ERROR = None
+try:
+    from pipeline.export import to_csv, to_pdf
+except Exception:
+    to_csv = to_pdf = None
+    _EXPORT_IMPORT_ERROR = traceback.format_exc()
+# --- end export imports ---
+
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 NOTEBOOK_TIMEOUT = 120
@@ -220,13 +229,27 @@ and hard penalties apply if Environment or Data score below 10.
     return summary
 
 
+EXPORT_MAX_AGE_S = 3600  # export files kept 1 h so users can still download them
+
+
+def _cleanup_old_exports():
+    """Delete reproscore_export_* temp dirs older than EXPORT_MAX_AGE_S."""
+    cutoff = time.time() - EXPORT_MAX_AGE_S
+    for d in Path(tempfile.gettempdir()).glob("reproscore_export_*"):
+        try:
+            if d.is_dir() and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+        except OSError as e:
+            print(f"[export] cleanup skipped {d}: {e!r}", flush=True)
+
+
 def run_pipeline(github_url, progress=gr.Progress(), request: gr.Request = None):
     logs = []
     tmpdir = None
     try:
         url = validate_github_url(github_url)
         if not url:
-            return "❌ Please enter a valid GitHub repository URL.", "", [], ""
+            return "❌ Please enter a valid GitHub repository URL.", "", [], "", None, None
         repo_name = url.rstrip("/").split("/")[-1].removesuffix(".git")
         repo_slug = "/".join(url.rstrip("/").removesuffix(".git").split("/")[-2:])
         logs.append(f"🚀 Starting: {url}")
@@ -239,8 +262,11 @@ def run_pipeline(github_url, progress=gr.Progress(), request: gr.Request = None)
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
         if r.returncode != 0:
             logs.append(f"❌ Clone failed: {r.stderr[:300]}")
-            return "\n".join(logs), "\n".join(logs), [], ""
+            return "\n".join(logs), "\n".join(logs), [], "", None, None
         logs.append("✅ Clone complete.")
+        _c = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--short", "HEAD"],
+                            capture_output=True, text=True)
+        repo_commit = _c.stdout.strip() if _c.returncode == 0 else None
 
         # ---- RRS: local static analysis, instant ----
         progress(0.15, desc="Running RRS static analysis...")
@@ -342,13 +368,34 @@ def run_pipeline(github_url, progress=gr.Progress(), request: gr.Request = None)
                         "Log in to run execution (ROS/RCS).")
 
         nb_rows = _nb_rows_from_json(notebooks)
+
+        # ---- CSV/PDF export ----
+        # Written to their own tempdir: tmpdir is deleted in `finally`,
+        # and gr.File needs the files to exist after this function returns.
+        csv_path = pdf_path = None
+        if to_csv is None or to_pdf is None:
+            logs.append(f"[export] import failed at startup: {_EXPORT_IMPORT_ERROR}")
+        else:
+            try:
+                _cleanup_old_exports()
+                export_dir = Path(tempfile.mkdtemp(prefix="reproscore_export_"))
+                stem = repo_slug.replace("/", "_")
+                result = {"repo": repo_slug, "commit": repo_commit,
+                          "rubric": "default", **scores}
+                csv_path = to_csv(result, str(export_dir / f"{stem}_reproscore.csv"))
+                pdf_path = to_pdf(result, str(export_dir / f"{stem}_reproscore.pdf"))
+                logs.append(f"[export] wrote {csv_path} and {pdf_path}")
+            except Exception as e:
+                logs.append(f"[export] failed: {e!r}\n{traceback.format_exc()}")
+                csv_path = pdf_path = None
+
         progress(1.0, desc="Done!")
         logs.append("🏁 Done!")
         return build_summary(repo_name, scores, len(nb_rows), ros_pending=False), \
-              "\n".join(logs), nb_rows, url
+              "\n".join(logs), nb_rows, url, csv_path, pdf_path
     except Exception as e:
         logs.append(f"❌ Error: {e}\n{traceback.format_exc()}")
-        return "\n".join(logs), "\n".join(logs), [], ""
+        return "\n".join(logs), "\n".join(logs), [], "", None, None
     finally:
         if tmpdir and tmpdir.exists():
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -421,6 +468,9 @@ with gr.Blocks(title="ReproScore") as demo:
     with gr.Tabs():
         with gr.TabItem("📊 Results"):
             results_md = gr.Markdown("*Submit a repository URL to see results.*")
+            with gr.Row():
+                csv_file = gr.File(label="⬇️ Download CSV", interactive=False)
+                pdf_file = gr.File(label="⬇️ Download PDF", interactive=False)
         with gr.TabItem("📓 Notebooks"):
             nb_table = gr.Dataframe(
                 headers=["Notebook","Status","Duration","Cells","Errors","Repro Score"],
@@ -442,7 +492,7 @@ with gr.Blocks(title="ReproScore") as demo:
     run_btn.click(
         fn=run_pipeline,
         inputs=[url_input],
-        outputs=[results_md, logs_box, nb_table, repo_state],
+        outputs=[results_md, logs_box, nb_table, repo_state, csv_file, pdf_file],
     )
     scopes_btn.click(fn=show_my_scopes, inputs=None, outputs=[scopes_out])
 

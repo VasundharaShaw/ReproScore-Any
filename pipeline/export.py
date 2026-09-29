@@ -21,6 +21,17 @@ FIELDS = [
 ]
 
 
+CSV_DECIMALS = 2  # display precision; full precision stays in the DB
+
+
+def _csv_value(v):
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return round(v, CSV_DECIMALS)
+    return v
+
+
 def _stamp(result):
     r = dict(result)
     r.setdefault("timestamp", datetime.now(timezone.utc).isoformat(timespec="seconds"))
@@ -47,7 +58,7 @@ def to_csv(results, path):
             w.writeheader()
         for r in results:
             r = _stamp(r)
-            w.writerow({k: ("" if r.get(k) is None else r.get(k)) for k in FIELDS})
+            w.writerow({k: _csv_value(r.get(k)) for k in FIELDS})
     return path
 
 
