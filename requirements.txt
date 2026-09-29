@@ -10,3 +10,4 @@ scipy
 pyyaml
 gradio>=4.0.0
 websocket-client
+reportlab>=4.0
