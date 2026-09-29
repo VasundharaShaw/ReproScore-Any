@@ -35,3 +35,4 @@ data_mounts/
 .pyenv
 execution/output/
 execution/**/__pycache__/
+.DS_Store
