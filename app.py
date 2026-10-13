@@ -46,103 +46,122 @@ MAX_NOTEBOOKS = 5
 # Content derived directly from pipeline/reproscore/src/scoring/{rrs,ros,rcs}.py
 # ---------------------------------------------------------------------------
 
-SCORE_LEGEND_MD = """
-## How to read these scores
+SCORE_LEGEND_HTML = """
+<style>
+.rs-legend { max-width: 860px; line-height: 1.55; color: var(--body-text-color); }
+.rs-legend h2 { font-size: 1.5rem; margin: 0 0 .6rem; }
+.rs-legend h3 { font-size: 1.15rem; margin: 1.8rem 0 .5rem; padding-top: 1rem;
+                border-top: 1px solid var(--border-color-primary); }
+.rs-legend p, .rs-legend li { margin: .5rem 0; }
+.rs-legend table { border-collapse: collapse; width: 100%; margin: .8rem 0 1rem; font-size: .95rem; }
+.rs-legend th, .rs-legend td { text-align: left; vertical-align: top; padding: .5rem .75rem;
+                               border: 1px solid var(--border-color-primary); }
+.rs-legend th { background: var(--background-fill-secondary); font-weight: 600; }
+.rs-legend td.num, .rs-legend th.num { text-align: right; white-space: nowrap; }
+.rs-legend td.key { font-weight: 700; text-align: center; width: 2.5rem; }
+.rs-legend code { padding: .1rem .35rem; border-radius: 4px;
+                  background: var(--background-fill-secondary); }
+.rs-legend .callout { margin: 1rem 0; padding: .75rem 1rem;
+                      border-left: 4px solid var(--color-accent, #f97316);
+                      background: var(--background-fill-secondary); border-radius: 4px; }
+</style>
+<div class="rs-legend">
 
-ReproScore reports **three** numbers, on **two tiers**. They answer different
-questions and are not interchangeable.
+<h2>How to read these scores</h2>
+<p>ReproScore reports <b>three</b> numbers, on <b>two tiers</b>. They answer different
+questions and are not interchangeable.</p>
+<table>
+  <tr><th>Score</th><th>Tier</th><th>Question it answers</th></tr>
+  <tr><td><b>RRS</b></td><td>Static</td><td>Is this repository <i>set up</i> to be reproducible?</td></tr>
+  <tr><td><b>ROS</b></td><td>Execution</td><td>Did it <i>actually run</i>?</td></tr>
+  <tr><td><b>RCS</b></td><td>Composite</td><td>Blend of the two, weighted by how much execution evidence exists</td></tr>
+</table>
+<div class="callout"><b>A high RRS does not predict that a repository will run.</b>
+Readiness and outcome are measured separately because they diverge. See the caveat at the bottom.</div>
 
-| Score | Tier | Question it answers |
-|---|---|---|
-| **RRS** | Static | Is this repository *set up* to be reproducible? |
-| **ROS** | Execution | Did it *actually run*? |
-| **RCS** | Composite | Blend of the two, weighted by how much execution evidence exists |
+<h3>RRS — Reproducibility Readiness Score (0–100)</h3>
+<p>Computed from the repository's files alone. No code is run. 26 sub-metrics are
+grouped into five categories:</p>
+<table>
+  <tr><th></th><th>Category</th><th class="num">Weight</th><th>What it looks for</th></tr>
+  <tr><td class="key">E</td><td>Environment Specification</td><td class="num"><b>0.30</b></td>
+      <td>Lockfiles, pinned dependencies, container spec, environment bootstrap, declared Python version</td></tr>
+  <tr><td class="key">A</td><td>Data Accessibility</td><td class="num"><b>0.25</b></td>
+      <td>Data described, a pointer to where data lives, acquisition script, workflow orchestration</td></tr>
+  <tr><td class="key">D</td><td>Documentation</td><td class="num"><b>0.20</b></td>
+      <td>README structure, install instructions, usage examples, inline explanation, entry point, docstrings, licence/citation metadata</td></tr>
+  <tr><td class="key">C</td><td>Code Portability</td><td class="num"><b>0.15</b></td>
+      <td>No absolute paths, resolvable imports, no hardcoded credentials, no silently swallowed errors</td></tr>
+  <tr><td class="key">S</td><td>Reproducibility Signals</td><td class="num"><b>0.10</b></td>
+      <td>Random seeds set, notebooks in linear execution order, tests, expected outputs, CI, externalised config, hardware requirements</td></tr>
+</table>
 
----
-
-### RRS — Reproducibility Readiness Score (0–100)
-
-Computed from the repository's files alone. No code is run. 26 sub-metrics are
-grouped into five categories:
-
-| | Category | Weight | What it looks for |
-|---|---|---|---|
-| **E** | Environment Specification | **0.30** | Lockfiles, pinned dependencies, container spec, environment bootstrap, declared Python version |
-| **A** | Data Accessibility | **0.25** | Data described, a pointer to where data lives, acquisition script, workflow orchestration |
-| **D** | Documentation | **0.20** | README structure, install instructions, usage examples, inline explanation, entry point, docstrings, licence/citation metadata |
-| **C** | Code Portability | **0.15** | No absolute paths, resolvable imports, no hardcoded credentials, no silently swallowed errors |
-| **S** | Reproducibility Signals | **0.10** | Random seeds set, notebooks in linear execution order, tests, expected outputs, CI, externalised config, hardware requirements |
-
-**Partial credit is deliberately cheap.** Each category passes through a gate
+<p><b>Partial credit is deliberately cheap.</b> Each category passes through a gate
 before it is weighted. Above a threshold τ the contribution is linear; below τ it
 is compressed super-linearly. A category scoring half of τ contributes
-considerably *less* than half. Thresholds: E τ=40, A τ=30, S τ=30, C τ=25, D τ=20.
+considerably <i>less</i> than half.</p>
+<table>
+  <tr><th>Category</th><th class="num">Threshold τ</th></tr>
+  <tr><td>E — Environment</td><td class="num">40</td></tr>
+  <tr><td>A — Data</td><td class="num">30</td></tr>
+  <tr><td>S — Signals</td><td class="num">30</td></tr>
+  <tr><td>C — Portability</td><td class="num">25</td></tr>
+  <tr><td>D — Documentation</td><td class="num">20</td></tr>
+</table>
 
-**Three hard penalties** are then subtracted from the total:
+<p><b>Three hard penalties</b> are then subtracted from the total:</p>
+<table>
+  <tr><th>Trigger</th><th class="num">Penalty</th></tr>
+  <tr><td>Environment score below 10</td><td class="num"><b>−20</b></td></tr>
+  <tr><td>Data score below 10</td><td class="num"><b>−15</b></td></tr>
+  <tr><td>Seed coverage below 50%</td><td class="num"><b>−10</b></td></tr>
+</table>
+<p>A repository with neither an environment specification nor a data pointer
+therefore starts 35 points down. Low RRS values are common and are not an error.</p>
 
-| Trigger | Penalty |
-|---|---|
-| Environment score below 10 | **−20** |
-| Data score below 10 | **−15** |
-| Seed coverage below 50% | **−10** |
+<h3>ROS — Reproducibility Outcome Score (0–100)</h3>
+<p>Computed only where sandboxed execution evidence exists. Six probes:</p>
+<table>
+  <tr><th>Probe</th><th class="num">Weight</th></tr>
+  <tr><td>Install success</td><td class="num">0.30</td></tr>
+  <tr><td>Execution success</td><td class="num">0.25</td></tr>
+  <tr><td>Output determinism</td><td class="num">0.20</td></tr>
+  <tr><td>Notebook execution rate</td><td class="num">0.10</td></tr>
+  <tr><td>Import success rate</td><td class="num">0.10</td></tr>
+  <tr><td>Test pass rate</td><td class="num">0.05</td></tr>
+</table>
+<p>ROS normalises over whichever probes are available, so a partial run still yields
+a comparable 0–100 figure.</p>
 
-A repository with neither an environment specification nor a data pointer
-therefore starts 35 points down. Low RRS values are common and are not an error.
+<h3>RCS — Reproducibility Composite Score (0–100)</h3>
+<p><code>RCS = (1 − α) · RRS + α · ROS</code></p>
+<p>α scales with how much execution evidence was collected and is <b>capped at 0.70</b>.
+Two consequences worth stating plainly:</p>
+<ul>
+  <li><b>With no execution evidence, RCS is identical to RRS.</b> This is by design, not a bug.</li>
+  <li><b>Even under full execution coverage, RRS never falls below 30% of the composite.</b>
+      Running successfully cannot fully redeem a badly specified repository.</li>
+</ul>
 
----
+<h3>Colour bands</h3>
+<table>
+  <tr><th>Band</th><th>Meaning</th></tr>
+  <tr><td>🟢 <b>60–100</b></td><td>Strong</td></tr>
+  <tr><td>🟡 <b>30–59</b></td><td>Partial</td></tr>
+  <tr><td>🔴 <b>0–29</b></td><td>Weak</td></tr>
+</table>
+<p>These bands are <b>interpretive aids, not validated thresholds.</b> They are useful
+for triage and comparison; they are not a pass/fail line.</p>
 
-### ROS — Reproducibility Outcome Score (0–100)
+<h3>The most important caveat</h3>
+<div class="callout"><b>A high RRS does not predict that a repository will run.</b>
+Readiness and outcome are measured separately precisely because they diverge: a
+well-documented, fully-pinned repository can still fail on a missing data file or an
+unavailable system library, and a scruffy repository with no README can run first
+time. Read RRS and ROS as two independent findings, not as an estimate and its
+confirmation.</div>
 
-Computed only where sandboxed execution evidence exists. Six probes:
-
-| Probe | Weight |
-|---|---|
-| Install success | 0.30 |
-| Execution success | 0.25 |
-| Output determinism | 0.20 |
-| Notebook execution rate | 0.10 |
-| Import success rate | 0.10 |
-| Test pass rate | 0.05 |
-
-ROS normalises over whichever probes are available, so a partial run still yields
-a comparable 0–100 figure.
-
----
-
-### RCS — Reproducibility Composite Score (0–100)
-
-`RCS = (1 − α) · RRS + α · ROS`
-
-α scales with how much execution evidence was collected and is **capped at 0.70**.
-Two consequences worth stating plainly:
-
-- **With no execution evidence, RCS is identical to RRS.** This is by design, not a bug.
-- **Even under full execution coverage, RRS never falls below 30% of the composite.**
-  Running successfully cannot fully redeem a badly specified repository.
-
----
-
-### Colour bands
-
-| Band | Meaning |
-|---|---|
-| 🟢 **60–100** | Strong |
-| 🟡 **30–59** | Partial |
-| 🔴 **0–29** | Weak |
-
-These bands are **interpretive aids, not validated thresholds.** They are useful
-for triage and comparison; they are not a pass/fail line.
-
----
-
-### The most important caveat
-
-**A high RRS does not predict that a repository will run.** Readiness and outcome
-are measured separately precisely because they diverge — a well-documented,
-fully-pinned repository can still fail on a missing data file or an
-unavailable system library, and a scruffy repository with no README can run
-first time. Read RRS and ROS as two independent findings, not as an estimate and
-its confirmation.
+</div>
 """
 
 # Short version appended beneath each result table.
@@ -477,7 +496,7 @@ with gr.Blocks(title="ReproScore") as demo:
                 interactive=False,
             )
         with gr.TabItem("ℹ️ How to read these scores"):
-            gr.Markdown(SCORE_LEGEND_MD)
+            gr.HTML(SCORE_LEGEND_HTML)
         with gr.TabItem("📋 Logs"):
             logs_box = gr.Textbox(label="Logs", lines=20, interactive=False)
         with gr.TabItem("🔑 Auth (debug)"):
