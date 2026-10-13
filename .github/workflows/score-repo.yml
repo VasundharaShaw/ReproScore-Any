@@ -71,7 +71,7 @@ jobs:
             | sed -E 's|https?://github.com/||; s|\.git$||')
           REPO_ID=$(sqlite3 output/db/db.sqlite \
             "SELECT id FROM repo_targets WHERE repository='$REPO_PATH' LIMIT 1;")
-          CLONE_DIR=$(ls -d execution/output/cloned_repos/*/ | head -1)
+          CLONE_DIR=/tmp/probe
           echo "repo_path=$REPO_PATH  repo_id=$REPO_ID  clone=$CLONE_DIR"
           python3 pipeline/score.py \
             --repo-dir "$CLONE_DIR" \
